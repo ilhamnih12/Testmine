@@ -1,0 +1,386 @@
+:root {
+  --bg: #0b0e12;
+  --fg: #e8ecf2;
+  --accent: #35b6ff;
+  --accent-dim: #1b6f9b;
+  --surface: rgba(16, 20, 26, 0.72);
+  --surface-border: rgba(255, 255, 255, 0.11);
+  --touch-color: rgba(255, 255, 255, 0.5);
+  --touch-color-active: rgba(255, 255, 255, 0.82);
+  --control-size: 132px;
+  --knob-size: 58px;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  user-select: none;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  overscroll-behavior: none;
+}
+
+#__next,
+main {
+  height: 100vh;
+  height: 100dvh;
+  width: 100%;
+}
+
+/* The game surface. touch-action: none is required so pointer events fire for
+ * multi-touch without the browser hijacking gestures. */
+.game-surface {
+  position: fixed;
+  inset: 0;
+  touch-action: none;
+  overflow: hidden;
+  background: radial-gradient(120% 120% at 50% 0%, #1c2733 0%, #0b0e12 62%);
+  width: 100%;
+  height: 100%;
+}
+
+.game-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  /* letterboxing handled in JS via device pixel ratio */
+}
+
+.game-hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+.game-hud.hidden {
+  display: none;
+}
+.game-hud > * {
+  pointer-events: auto;
+}
+/* The camera zone is decorative only; drags must reach the surface below. */
+.game-hud .camera-zone {
+  pointer-events: none;
+}
+
+/* ---------- Loading screen ---------- */
+.loading-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  background: radial-gradient(120% 120% at 50% 0%, #16202b 0%, #0b0e12 70%);
+  transition: opacity 0.5s ease;
+}
+.loading-overlay.hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+.loading-title {
+  font-size: clamp(22px, 6vw, 34px);
+  font-weight: 800;
+  letter-spacing: 0.5px;
+}
+.loading-sub {
+  color: #9fb3c8;
+  font-size: 14px;
+  margin-top: -6px;
+}
+.loading-bar {
+  width: min(72vw, 340px);
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+.loading-bar > span {
+  display: block;
+  height: 100%;
+  width: 0%;
+  background: linear-gradient(90deg, var(--accent-dim), var(--accent));
+  border-radius: 999px;
+  transition: width 0.2s ease;
+}
+.loading-hint {
+  color: #6d8299;
+  font-size: 12px;
+  text-align: center;
+  padding: 0 24px;
+  line-height: 1.5;
+}
+
+/* ---------- Virtual joystick ---------- */
+.joy {
+  position: absolute;
+  left: max(18px, env(safe-area-inset-left));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  width: var(--control-size);
+  height: var(--control-size);
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(8px);
+  touch-action: none;
+  transition: opacity 0.25s ease, transform 0.15s ease;
+}
+.joy.knob {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: var(--knob-size);
+  height: var(--knob-size);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(255, 255, 255, 0.6), rgba(255, 255, 255, 0.12));
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+}
+.joy .dir {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.14);
+}
+.joy.active {
+  border-color: var(--accent);
+}
+.joy.active .knob {
+  background: radial-gradient(circle at 35% 30%, rgba(53, 182, 255, 0.85), rgba(53, 182, 255, 0.2));
+}
+
+/* ---------- Action buttons ---------- */
+.controls-right {
+  position: absolute;
+  right: max(18px, env(safe-area-inset-right));
+  bottom: max(18px, env(safe-area-inset-bottom));
+  display: grid;
+  grid-template-columns: repeat(2, 74px);
+  grid-template-rows: repeat(2, 74px);
+  gap: 12px;
+  align-items: end;
+  justify-items: end;
+}
+.action-btn {
+  position: relative;
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  backdrop-filter: blur(8px);
+  color: #dfe8f2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  touch-action: none;
+  transition: transform 0.08s ease, background 0.15s ease, box-shadow 0.15s ease;
+}
+.action-btn svg {
+  width: 26px;
+  height: 26px;
+  fill: currentColor;
+}
+.action-btn .label {
+  font-size: 10px;
+  opacity: 0.85;
+  margin-top: 3px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.action-btn.pressed {
+  transform: scale(0.9);
+  background: rgba(53, 182, 255, 0.28);
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px rgba(53, 182, 255, 0.16);
+}
+.action-btn.small {
+  width: 54px;
+  height: 54px;
+}
+.action-btn.small .label {
+  font-size: 8px;
+}
+
+/* Ripple effect */
+.ripple {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.45);
+  transform: scale(0);
+  animation: ripple-anim 0.5s ease-out forwards;
+  pointer-events: none;
+}
+@keyframes ripple-anim {
+  to {
+    transform: scale(3);
+    opacity: 0;
+  }
+}
+
+/* Camera control visual hint (right-middle drag zone) */
+.camera-zone {
+  position: absolute;
+  right: max(18px, env(safe-area-inset-right));
+  top: 50%;
+  transform: translateY(-50%);
+  width: 96px;
+  height: 96px;
+  border-radius: 50%;
+  border: 1px dashed rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 11px;
+  text-align: center;
+  line-height: 1.3;
+  transition: opacity 0.25s ease;
+}
+.camera-zone.dragging {
+  border-color: var(--accent);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* Auto-hide: when the user is idle we fade the controls out. */
+.controls-fade {
+  transition: opacity 0.4s ease;
+}
+.controls-fade.idle {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* ---------- Perf / HUD ---------- */
+.hud {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  left: max(10px, env(safe-area-inset-left));
+  display: flex;
+  gap: 8px;
+  z-index: 6;
+  flex-wrap: wrap;
+  align-items: center;
+  pointer-events: none;
+}
+.chip {
+  pointer-events: auto;
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+.chip.mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.chip.bad {
+  color: #ff8a7a;
+  border-color: rgba(255, 138, 122, 0.45);
+}
+.chip.warn {
+  color: #ffd166;
+}
+.chip.good {
+  color: #6ce5a8;
+}
+
+.quality-toggle {
+  position: absolute;
+  top: max(10px, env(safe-area-inset-top));
+  right: max(10px, env(safe-area-inset-right));
+  z-index: 6;
+}
+
+/* No-JS / degraded fallback */
+.noscript {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  text-align: center;
+  padding: 24px;
+  background: var(--bg);
+}
+
+/* PWA install prompt card */
+.install-card {
+  position: absolute;
+  bottom: max(120px, calc(env(safe-area-inset-bottom) + 96px));
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(92vw, 360px);
+  background: var(--surface);
+  border: 1px solid var(--surface-border);
+  border-radius: 16px;
+  padding: 14px 16px;
+  text-align: center;
+  backdrop-filter: blur(12px);
+  z-index: 8;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+.install-card .actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+  margin-top: 10px;
+}
+.install-card button {
+  border: 1px solid var(--surface-border);
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--fg);
+  padding: 8px 18px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.install-card button.primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #04121b;
+  font-weight: 700;
+}
+
+@media (max-width: 480px) {
+  :root {
+    --control-size: 120px;
+    --knob-size: 52px;
+  }
+  .controls-right {
+    grid-template-columns: repeat(2, 66px);
+    grid-template-rows: repeat(2, 66px);
+  }
+  .action-btn {
+    width: 64px;
+    height: 64px;
+  }
+}
+
+/* Orientation handling */
+@media (orientation: portrait) {
+  .camera-zone {
+    display: none;
+  }
+  .hint-text {
+    display: none;
+  }
+}

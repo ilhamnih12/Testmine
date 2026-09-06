@@ -1,0 +1,27 @@
+# Notices
+
+## Frontend wrapper (this repository)
+Licensed under the MIT License (see LICENSE). This covers the Next.js app,
+React components, virtual-control system, input handler, demo renderer,
+adaptive quality controller, PWA configuration, and the build scripts in
+`scripts/`.
+
+## Luanti (Minetest) engine and derived files
+Luanti is licensed under the **GNU Lesser General Public License v2.1 or later**
+(LGPL-2.1-or-later). If you build and distribute the Luanti WebAssembly engine
+(produced by the community `paradust7/luanti-wasm` / `Kaesual/minetest-wasm`
+Emscripten pipeline), you must:
+
+- comply with the LGPL (specifically: allow users to replace the engine
+  library with a modified version, and provide the corresponding source);
+- keep the engine binary and this wrapper as **separate, clearly-licensed**
+  artifacts (the LGPL does not require this wrapper to be open-sourced, as long
+  as it does not embed or statically link LGPL-covered engine code in a merged
+  work);
+- retain this notice and any upstream copyright/license headers contained in
+  the build pipeline and engine sources.
+
+Refer to the upstream projects for their exact license texts:
+- https://github.com/luanti-org/luanti (LGPL-2.1-or-later)
+- https://github.com/paradust7/luanti-wasm (LGPLv2.1)
+- https://github.com/Kaesual/minetest-wasm (LGPLv2.1)
