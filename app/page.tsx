@@ -8,7 +8,7 @@ import LoadingScreen from "@/components/LoadingScreen";
 import PerformanceMonitor from "@/components/PerformanceMonitor";
 
 export default function Home() {
-  const { surfaceRef, canvasRef, handlerRef, state, start, exit, cycleQuality } = useGameEngine({
+  const { surfaceRef, canvasRef, handlerRef, state, start, cycleQuality } = useGameEngine({
     autoStart: false,
     scriptUrl: "/luanti.js",
   });
@@ -45,10 +45,6 @@ export default function Home() {
     setAudioHint(true);
     start();
   }, [start]);
-
-  const onExit = useCallback(() => {
-    exit();
-  }, [exit]);
 
   return (
     <main>
