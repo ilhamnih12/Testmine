@@ -1,149 +1,98 @@
-# Technical Feasibility Report
-
-*Research findings from: the [Luanti source](https://github.com/luanti-org/luanti),
-official docs, the community WASM ports, Emscripten guidance, and Vercel
-serverless documentation.*
+# Riset Teknis: Menjalankan Luanti Asli di Browser (diperbarui 2026-09-08)
 
 ## TL;DR
 
-| Question | Answer |
-| --- | --- |
-| Does Luanti have a web/WASM build? | **Not official**, but a working, maintained community port exists (`paradust7/luanti-wasm`, forked/modernised by `Kaesual/minetest-wasm`). Runs in-browser with the real engine. |
-| Can I run this **on Vercel**? | **Only the frontend + static WASM.** Vercel functions are stateless and **do not support WebSockets / long-lived connections**, so the *game server* cannot live there. |
-| Rendering engine? | Luanti uses its own fork of **IrrlichtMT** (a fork of the **Irrlicht Engine**). It does **not** expose WebGL out of the box for WASM; the community port patches the renderer to use WebGL/WebGPU-style backends via Emscripten. |
-| Is a from-scratch web port realistic? | **No, not in one pass and not from this sandbox** (no Emscripten toolchain installed, source is ~tens of thousands of C++ files, and the renderer needs deep patching). The pragmatic path is to build on the existing WASM toolchain. |
-| Licensing? | Engine = **LGPL-2.1-or-later**. Wrapper can be MIT. Keep them as separate artifacts. |
-| Realistic WASM bundle size? | The base engine compiles to a **~10–30 MB `.wasm`** plus a multi-MB `.data` game pack. Stream/compress + cache immutably. |
+**Feasible — dan sudah terbukti jalan.** Ada port resmi-komunitas Luanti
+(C++) ke WebAssembly/Emscripten yang masih dipelihara dan di-host publik.
+Project ini mengintegrasikannya (bukan meniru/mendemokannya).
 
-## 1. Architecture of Luanti
+## Temuan riset (per 2026-09-08)
 
-Luanti is a **C++ application** split into:
+### 1. Port WASM: `paradust7/luanti-wasm`
 
-- **`src/client`** — the game client: input, camera, HUD, particle effects,
-  sound, and the **mesh/chunk renderer**.
-- **`src/server`** — a **single-threaded, deterministic** block/world simulator
-  plus Lua modding via a Lua VM. Player state, world chunks, and physics
-  authority live here.
-- **`src/script`** — Lua bindings (LuaJIT / luajit).
-- Shared/portable code uses **CMake** and a long list of third-party libs
-  (IrrlichtMT for rendering, **SQLite** for worlds/mod storage, **zlib**,
-  **libcurl** for content download, **OpenAL** for audio, **jsoncpp**, etc.).
+- Repo: https://github.com/paradust7/luanti-wasm — **masih aktif**
+  (push terakhir: 2026-09-08, hari ini).
+- Luanti dikompilasi dengan Emscripten: `luanti.js` + `luanti.wasm`
+  (+ `worker.js` untuk pthread).
+- Arsitektur storage modern: **OPFS** (Origin Private File System) +
+  pack zstd (`base.pack`, `certs.pack`) yang hanya diunduh saat berubah.
+  World & config tersimpan persisten di browser.
+- Mendukung **singleplayer in-browser** (server lokal in-process) dan
+  network play via proxy WebSocket (emsocket) — proxy hanya dibutuhkan
+  untuk multiplayer, bukan singleplayer.
+- `setConf()` untuk preset konfigurasi (mis. `viewing_range` kecil agar
+  hemat memori/jaringan di device lemah).
+- Di-host di `https://luanti.dustlabs.io/` (build WIP, versi Luanti lebih
+  baru — cabang merge menuju 5.14+).
 
-### Client-server model
+### 2. Fork terpelihara: `Kaesual/minetest-wasm`
 
-It is a classic **authoritative server** model over **UDP** (a custom
-protocol on top of ENet-style reliable/unreliable channels). The client sends
-player + input packets; the server sends world/entity/chat packets.
+- Repo: https://github.com/Kaesual/minetest-wasm (fork dari paradust,
+  +63 commit). Target: embed Luanti di platform Common Ground (app.cg).
+- **Build 5.9** dengan game pack preloaded: **VoxeLibre 0.90.1** (default,
+  Minecraft-like), Minetest Game, Glitch 1.3.2, Blockbomber, Mineclonia
+  (rusak, LUA error).
+- Launcher React modern: pilih game yang di-preload, bahasa (50+ bahasa,
+  termasuk `id`), storage mode, **backup/restore world sebagai zip**,
+  menu settings in-game (gear ⚙️), console.
+- Standalone playable: `https://embed.commonground.cg/standalone/minetest/`
+  — **designed untuk iframe embedding** (dokumentasi header ada di README).
+- Layout rilis (dari `build_www.sh`):
+  ```
+  <root>/index.html  <root>/<assets>/…        (launcher)
+  <root>/minetest/minetest.js|.wasm|.worker.js
+  <root>/minetest/packs/{base,minetest_game,voxelibre,glitch,blockbomber,mineclonia}.pack
+  ```
+  Nama release dir fixed: `minetest/`.
 
-> **Consequence for the browser:** Emscripten cannot open raw UDP sockets. The
-> WASM community ports therefore tunnel the **real UDP over a WebSocket /
-> WebTransport proxy** (see `docs/WASM_BUILD.md`). On *Vercel*, you can serve the
-> client but must host the **proxy + server elsewhere** (a small VPS, Fly.io, or
-> a WebSocket-capable host).
+### 3. Versi Luanti (konteks)
 
-## 2. WebAssembly / Emscripten feasibility
+- Luanti terbaru per changelog resmi: **5.17.0** (2026-08-20), 5.16.1
+  (2026-05), 5.15.0 (2026-01), 5.14.0 (2025-10-05).
+- Build WASM: 5.9 (Common Ground) / 5.14+ WIP (Dustlabs). Game
+  singleplayer tetap lengkap di 5.9.
 
-Compiling the **client** to WASM is the proven path (the community ports do it).
-Blockers that had to be solved there — and are **already solved upstream**:
+### 4. Persyaratan browser
 
-1. **Rendering.** Irrlicht's OpenGL 1.x driver doesn't map to WebGL directly.
-   The port uses Emscripten's GL context and patched shaders to get a
-   WebGL-backed renderer. (The forum lore about "Irrlicht doesn't work with
-   Emscripten" refers to the stock renderer; the WASM fork patched it.)
-2. **Networking.** Raw sockets → **WebSocket proxy** of the UDP stream.
-3. **Threading.** Luanti historically ran the client mostly single-threaded;
-   WASM threads (`-pthread` + SharedArrayBuffer) need **COOP/COEP** headers —
-   exactly what `vercel.json` sets.
-4. **File system.** `EMSCRIPTEN_FILESYSTEM` / a `.data` image for games, world
-   config, and textures.
-5. **SQLite.** Compiles under Emscripten; the port stores worlds in-browser
-   (IndexedDB-backed virtual FS in `Kaesual`'s fork) instead of real disk.
+- **SharedArrayBuffer** (pthreads) → dokumen engine harus
+  `Cross-Origin-Embedder-Policy: require-corp` +
+  `Cross-Origin-Opener-Policy` (any) — cross-origin isolated.
+  - Top-level: COOP `same-origin` + COEP cukup.
+  - Iframe cross-origin: dokumen iframe harus COOP `cross-origin` + COEP;
+    halaman induk **tidak boleh** men-set COEP (biar iframe tidak
+    diwajibkan CORP/CORS).
+- **WebGL2** untuk render.
+- **iOS: Safari 17+** (SAB). Di bawah itu game tidak bisa start —
+  dideteksi & diperingatkan di landing page.
+- Audio butuh user gesture pertama (Start Game) — normal.
 
-### Emscripten flags for a game engine (what the build uses)
+### 5. Mengapa Vercel tetap cocok
 
-```
--Os -Oz                     # size-optimised
--s WASM=1
--s ALLOW_MEMORY_GROWTH=1
--s MAXIMUM_MEMORY=...       # bounded heap
--s USE_SDL=2 (or GL)        # depends on the backend
--s FETCH=1 / -lwebsocket.js # asset + network
--s ASYNCIFY                  # if the code uses blocking I/O
---preload-file ...           # game pack
-```
+- Vercel meng-host **static + Next.js**: situs kita adalah wrapper
+  (landing + host iframe) dan (opsional) engine self-hosted sebagai
+  static file di `/public/engine`.
+- Header COOP/COEP: di-set via `middleware.ts` (berlaku di dev & Vercel) —
+  tidak perlu server khusus.
+- Vercel **tidak** perlu menjalankan game server: singleplayer
+  in-browser, persis desain yang diminta (tanpa backend).
+- Build-time download: mesin build Vercel punya internet → engine bisa
+  diunduh saat deploy (skrip `scripts/download-engine.mjs`).
 
-See `docs/WASM_BUILD.md`.
+## Keputusan arsitektur
 
-## 3. Mobile bottlenecks & mitigations
+| Opsi | Pro | Kontra | Keputusan |
+|---|---|---|---|
+| A. Build Luanti→WASM sendiri (Docker/Emscripten) | 100% control | Berjam-jam build, resource besar, rawan | ❌ |
+| B. Proxy runtime file engine via serverless | Repo kecil, selalu terbaru | Tergantung function streaming & kuota | ❌ (simpel & andal lebih penting) |
+| C. Iframe mirror publik + self-host opsional | Game asli langsung jalan, zero-setup, repo kecil, offline saat self-host | Tergantung mirror komunitas (mitigasi: 2 mirror + "buka langsung") | ✅ |
 
-| Bottleneck | Why | Mitigation (implemented / recommended) |
-| --- | --- | --- |
-| Draw calls | Per-node meshes → thousands of calls | Batching, chunk meshing, texture atlasing |
-| Overdraw / fragment cost | Large trimmed textures, alpha weather | Reduced texture resolution, no AA on low tier |
-| Memory (textures) | Full-size textures blow mobile GPU budgets | ASTC/Basis compression, mipmapping, streaming |
-| Chunk streaming | World gen floods the main thread | Distance-limited loading/unloading, worker-based gen |
-| Input latency | JS↔WASM boundary + React re-renders | **Single-frame snapshot, no per-move React render** (`src/lib/inputHandler.ts`) |
-| Touch accuracy | Small targets, gesture hijacking | `touch-action:none`, large targets, deadzone, safe-area |
+## Status integrasi
 
-## 4. Vercel suitability
-
-**What works great on Vercel:**
-- Static serving of the Next.js app + WASM assets (CDN, immutable cache).
-- Global edge, no server ops, free tier.
-- PWA + headers config.
-
-**What Vercel cannot do (for this project):**
-- **No WebSocket / persistent connections** on Serverless/Edge functions
-  (max execution time, stateless, no live sockets). Confirmed by Vercel docs:
-  `vercel.com/guides/do-vercel-serverless-functions-support-websocket-connections`.
-- **No long-running server loop** (game server must hold world state in memory).
-- No raw TCP/UDP (needed for the Luanti protocol unless tunnelled).
-
-**Recommended topology:**
-```
-Vercel ── serves ──> Next.js app (client + virtual controls)
-                        │  (WASM engine in the browser)
-                        ▼
-Clients <── WebSocket/WebTransport tunnel ──> Proxy/Room server (Fly.io/VPS)
-                                                    │
-                                                    ▼
-                                          Luanti game server (dedicated)
-```
-
-This is why `vercel.json` only configures the **frontend** (headers, rewrites,
-static cache) and this repo ships the **client wrapper**; the game server itself
-lives off-Vercel.
-
-## 5. Answers to "Questions to investigate"
-
-1. **Does Luanti have an existing web build?** No official one; yes, a
-   community WASM port (`paradust7/luanti-wasm`; `Kaesual/minetest-wasm` fork
-   adds a Next.js loader, in-browser save sync, loadable game packs, and p2p
-   play via a UDP-over-WebSocket proxy).
-2. **Rendering engine?** IrrlichtMT (a fork of Irrlicht). It needs patching for
-   WebGL under Emscripten — this is already done in the community port.
-3. **Server-side?** Authoritative **dedicated server** (or p2p when the server
-   is another browser via the proxy). Vercel cannot host it.
-4. **Licence compatibility?** Engine **LGPL-2.1-or-later**; wrapper **MIT**.
-   Keep them separate; distribute LGPL source/modification rights. (NOTICE)
-5. **Community mods?** The Lua mod system runs in the client/server build; the
-   WASM port loads `mod_storage.sqlite` and content. Not all native external
-   mods (C++ mods) work under WASM, but Lua mods largely do.
-6. **Realistic WASM bundle size?** ~10–30 MB engine + multi-MB data. With
-   gzip/brotli, streaming, and immutable caching it's workable; still a
-   hard floor above the "<3s on 4G" target unless you lazy-partition it.
-
-## 6. Bottom line
-
-A **full, vendor-grade re-port of Luanti to pure WASM in this session is not
-feasible** (toolchain, renderer patching, engine size). The sensible, honest
-deliverable — which this repo implements — is:
-
-1. A **clean, mobile-optimised frontend** (virtual controls, adaptive quality,
-   PWA) that boots the engine;
-2. A **seam** (`src/lib/wasmLoader.ts`) that loads the **real** engine when the
-   community-built WASM artifacts are present, and a **demo fallback** otherwise;
-3. Correct **Vercel configuration** (headers, static asset strategy, PWA);
-4. The **build pipeline** (`scripts/build-luanti-wasm.sh`) to obtain the real
-   engine and drop it in;
-5. Honest **documentation** of what Vercel can and cannot hold.
+- [x] Landing page + host `/play` full-screen (mobile-first).
+- [x] Iframe mirror (Common Ground default, Dustlabs alternatif) +
+  top-level "buka langsung" fallback.
+- [x] `middleware.ts`: COOP/COEP policy per path.
+- [x] `scripts/download-engine.mjs`: self-host (diuji terhadap mock kedua
+  layout rilis).
+- [x] PWA (manifest, SW, icon), cache headers, safe-area, iOS-17 guard.
+- [ ] (pengguna) Uji di device: iPhone iOS17+, Android, desktop.

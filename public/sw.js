@@ -1,27 +1,22 @@
-/* Luanti Mobile Web - Service Worker
+/* Luanti Web — Service Worker (v2)
+ *
+ * Scope: SAME-ORIGIN requests only (the game engine runs in its own
+ * document — either a cross-origin mirror iframe we must never touch, or
+ * /engine/* when self-hosted).
  *
  * Strategies:
- *   - navigations (documents): network-first, fall back to cache when offline.
- *   - WASM / data / hashed assets: cache-first with background fill; these are
- *     immutable & content-addressed so revalidation is wasteful.
+ *   - navigations: network-first, fall back to cache when offline.
+ *   - immutable assets (wasm/pack/hash-like): cache-first.
  *   - everything else: stale-while-revalidate.
- *
- * IMPORTANT (Vercel + COOP/COEP): do NOT cache the cross-origin UDP-proxy
- * responses; WebSockets/webtransport goes through the proxy server, not here.
  */
-const VERSION = "luanti-v1";
+const VERSION = "luanti-web-v2";
 const CORE_CACHE = `${VERSION}-core`;
 const IMMUTABLE_CACHE = `${VERSION}-immutable`;
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     caches.open(CORE_CACHE).then((cache) =>
-      cache.addAll([
-        "/",
-        "/manifest.json",
-        "/icons/icon-192.png",
-        "/icons/icon-512.png",
-      ]),
+      cache.addAll(["/", "/manifest.json", "/icons/icon-192.png", "/icons/icon-512.png"]),
     ),
   );
   self.skipWaiting();
@@ -43,18 +38,18 @@ self.addEventListener("activate", (event) => {
 });
 
 function isImmutable(url) {
-  return /\.(wasm|data|pak|zip|png|jpg|webp|woff2?|map)$/i.test(url.pathname) ||
-    /\.[0-9a-f]{8,}\./i.test(url.pathname);
+  return /\.(wasm|data|pack|zip|png|jpg|jpeg|webp|svg|woff2?|map)$/i.test(url.pathname) ||
+    /\.[0-9a-f]{8,}\./i.test(url.pathname) ||
+    url.pathname.startsWith("/engine/");
 }
 
 self.addEventListener("fetch", (event) => {
   const req = event.request;
   const url = new URL(req.url);
 
-  // Only handle same-origin GETs.
+  // Only handle same-origin GETs. Cross-origin (mirror iframe) is untouched.
   if (req.method !== "GET" || url.origin !== self.location.origin) return;
 
-  // Navigation requests: network-first.
   if (req.mode === "navigate") {
     event.respondWith(
       fetch(req)
@@ -68,7 +63,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Immutable assets (WASM, data, media): cache-first.
   if (isImmutable(url)) {
     event.respondWith(
       caches.match(req).then(
@@ -86,7 +80,6 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  // Everything else: stale-while-revalidate.
   event.respondWith(
     caches.match(req).then((cached) => {
       const network = fetch(req).then((res) => {
