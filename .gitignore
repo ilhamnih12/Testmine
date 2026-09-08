@@ -30,11 +30,10 @@ next-env.d.ts
 .vscode/
 .idea/
 
-# compiled WASM engine artifacts (large; produced by the Emscripten pipeline)
+# Luanti WASM engine artifacts (large binaries from the Emscripten pipeline;
+# fetched into public/engine by `npm run download-engine`, kept out of git)
+/public/engine/
 /public/luanti.js
 /public/luanti.wasm
 /public/luanti.data
 /public/games/
-
-# docker build outputs
-/www/

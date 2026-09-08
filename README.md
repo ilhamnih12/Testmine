@@ -1,140 +1,162 @@
-# Luanti Mobile Web — Luanti (Minetest) on the web, optimised for mobile, deployable to Vercel
+# Luanti Web — Main Luanti (Minetest) Asli di Browser
 
-A mobile-first wrapper around the **Luanti** (formerly **Minetest**) game engine,
-deployed to **Vercel** as a Progressive Web App. It bundles:
+Luanti (sebelumnya Minetest) **asli** — engine voxel C++ — berjalan 100% di
+browser via WebAssembly. Fokus **singleplayer**, **tanpa backend apa pun**,
+dioptimalkan untuk mobile, siap deploy ke **Vercel**.
 
-- a **WASM client loader** that boots the real Luanti engine when its compiled
-  artifacts are present, with a **2D fallback demo** when they are not;
-- a full **virtual control system** (adaptive joystick + action buttons + camera
-  drag + pinch zoom + haptics + auto-hide + on-device customisation);
-- an **adaptive performance controller** (rolling FPS → auto quality tier);
-- **PWA** install / offline / fullscreen support;
-- **Vercel config, headers, and a service worker** tuned for COOP/COEP + WASM.
+> **Penting:** ini bukan demo 2D dan bukan emulasi. Yang berjalan adalah
+> client Luanti sungguhan (C++ → WebAssembly oleh komunitas), lengkap dengan
+> menu utama, world generation, physics, inventory, touch controls, dan
+> penyimpanan world di browser. Server singleplayer berjalan **di dalam
+> browser** (in-process), jadi tidak butuh server/backend — persis seperti
+> singleplayer Luanti native.
 
-> **Reality check (read this first).** Luanti is a large C++ engine with a
-> custom Irrlicht-style renderer. There is **no official WASM target** and
-> **Vercel cannot host the interactive game server** (its functions are stateless
-> and don't support WebSocket connections). This repo delivers the **frontend
-> wrapper + control layer + deployment config + build pipeline** — the piece you
-> actually control and the piece that is realistically deployable to Vercel.
-> The heavy engine itself is produced by the community
-> `paradust7/luanti-wasm` / `Kaesual/minetest-wasm` Emscripten pipeline and
-> dropped into `/public`. See [docs/TECHNICAL_FEASIBILITY.md](docs/TECHNICAL_FEASIBILITY.md)
-> and [docs/WASM_BUILD.md](docs/WASM_BUILD.md).
-
----
-
-## Project structure
+## Bagaimana ini bekerja
 
 ```
-.
-├── app/                          # Next.js App Router
-│   ├── layout.tsx                # metadata, PWA meta, viewport
-│   ├── globals.css               # all styles (controls, HUD, loading)
-│   └── page.tsx                  # composition root (engine + controls + HUD)
-├── public/
-│   ├── manifest.json             # PWA manifest
-│   ├── sw.js                     # service worker (offline + immutable cache)
-│   ├── icons/                    # generated PWA icons
-│   ├── README.md                 # "where do the WASM files go?"
-│   └── luanti.js|wasm|data       # ⚠️ produced by the build, git-ignored
-├── src/
-│   ├── components/
-│   │   ├── VirtualControls.tsx   # joystick + buttons + camera + settings
-│   │   ├── LoadingScreen.tsx     # start menu + progress bar
-│   │   └── PerformanceMonitor.tsx# FPS + quality-tier HUD chips
-│   ├── hooks/
-│   │   ├── useGameEngine.ts      # engine boot + rAF loop + adaptive quality
-│   │   └── usePWA.ts             # SW registration + install prompt + fullscreen
-│   ├── lib/
-│   │   ├── wasmLoader.ts         # Emscripten loader + demo fallback
-│   │   ├── inputHandler.ts       # multi-touch -> InputSnapshot
-│   │   ├── renderer.ts           # procedural 2D demo world
-│   │   ├── quality.ts            # adaptive quality controller
-│   │   └── types.ts              # shared types
-├── scripts/
-│   └── build-luanti-wasm.sh      # builds the real engine via the upstream pipeline
-├── docs/                         # feasibility report + guides (see below)
-├── vercel.json                   # headers, rewrites
-├── next.config.mjs
-├── tsconfig.json
-└── package.json
+┌─────────────────────────── situs ini (Vercel) ───────────────────────────┐
+│  /            landing page: pilihan mirror, bahasa, panduan, PWA         │
+│  /play        full-screen host → iframe ke engine                        │
+│  /engine/*    (opsional) engine self-hosted, same-origin                 │
+└──────────────────────────────────────────────────────────────────────────┘
+                │ iframe (browser-mu yang memuat engine)
+                ▼
+┌──────────────────────── engine Luanti WASM ───────────────────────────────┐
+│  Launcher: pilih game (VoxeLibre/Minetest Game/...), storage, Start      │
+│  Runtime: minetest.wasm (pthreads/SharedArrayBuffer), WebGL2, audio      │
+│  Singleplayer: dedicated server lokal IN-PROCESS di browser              │
+│  World:  tersimpan di IndexedDB/OPFS browser (backup/restore zip)        │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Quick start
+Engine dimuat dari salah satu sumber (otomatis):
+
+1. **Self-hosted** (paling andal & offline) — hasil
+   `npm run download-engine` di `/public/engine`. Semua asset same-origin.
+2. **Mirror publik komunitas** (default, tanpa setup apa pun):
+   - **Common Ground** — build 5.9, launcher paling lengkap
+     (`https://embed.commonground.cg/standalone/minetest/`)
+   - **Dustlabs (paradust)** — build 5.14+ eksperimental
+     (`https://luanti.dustlabs.io/`)
+
+Keduanya adalah deploy resmi repositori port WASM:
+[paradust7/luanti-wasm](https://github.com/paradust7/luanti-wasm) dan
+fork [Kaesual/minetest-wasm](https://github.com/Kaesual/minetest-wasm).
+
+## Menjalankan lokal
 
 ```bash
 npm install
 npm run dev        # http://localhost:3000
 ```
 
-You'll see the start screen → tap **Play** → the 2D demo world runs with full
-virtual controls, FPS meter, and quality control. The `demo` chip indicates the
-real engine isn't wired up yet.
+Buka → **Main Sekarang** → di layar launcher engine: *Start Game* (pilih
+game + storage “Save worlds in browser”) → di menu Luanti: *Singleplayer* →
+buat world. Selesai.
 
-To load the actual Luanti client instead:
+Opsional — self-host engine (butuh internet; ±100–300 MB):
 
 ```bash
-chmod +x scripts/build-luanti-wasm.sh
-./scripts/build-luanti-wasm.sh   # requires Docker; stages artifacts into /public
-npm run dev
+npm run download-engine                  # mirror default (Common Ground)
+npm run download-engine -- --mirror=dustlabs
 ```
 
-## Deploy to Vercel
+## Deploy ke Vercel
 
-`vercel.json` is ready. Push this repo to GitHub and import in Vercel, or:
+Push repo → import di Vercel (framework Next.js, build `npm run build`).
+Atau:
 
 ```bash
 npx vercel --prod
 ```
 
-What Vercel serves: the Next.js frontend, the WASM assets (as static `/public`
-files), and the PWA. **It does not and cannot host the game server** — that's
-expected and documented.
+Yang perlu diperhatikan (sudah di-set di repo ini):
 
-### Critical headers
+- **Header COOP/COEP** untuk `SharedArrayBuffer` (pthreads engine) diberikan
+  oleh `middleware.ts`:
+  - `/play` → `Cross-Origin-Opener-Policy: same-origin` (tanpa COEP, agar
+    iframe mirror cross-origin tidak terblokir).
+  - `/engine/*` → COOP + COEP `require-corp` + cache immutable
+    (mode self-hosted).
+- **Cache**: file engine immutable 1 tahun; `index.html`/`sw.js` no-cache.
+- **Vercel build-time download** (opsional, agar produksi 100% self-hosted
+  dan tidak bergantung mirror komunitas):
+  ```json
+  { "buildCommand": "node scripts/download-engine.mjs || true; npm run build" }
+  ```
+  di `vercel.json`. Mesin Vercel punya akses internet, sehingga engine
+  terunduh saat build. `|| true` memastikan build tetap lanjut memakai mode
+  mirror bila download gagal.
 
-The engine requires a shared-memory-capable context, so `vercel.json` sets:
+## Singleplayer: kenapa tidak butuh backend
 
-```http
-Cross-Origin-Embedder-Policy: require-corp
-Cross-Origin-Opener-Policy: same-origin
-Cross-Origin-Resource-Policy: same-origin
+Luanti native menjalankan dedicated server **in-process** saat singleplayer.
+Build WASM mempertahankan perilaku ini: saat kamu menekan *Singleplayer →
+Create world*, server berjalan di thread WASM di browser-mu. Tidak ada
+koneksi keluar (kecuali kamu memilih bergabung ke server publik). World
+disimpan di storage browser (IndexedDB/OPFS) — bisa di-backup sebagai zip
+dari menu gear ⚙️ di kanan-atas dalam game.
+
+> Multiplayer P2P (host/join via proxy WebSocket) memang didukung engine-nya,
+> tapi di luar scope project ini — fokusnya singleplayer.
+
+## Optimisasi mobile
+
+- **Touch controls bawaan Luanti**: joystick virtual + tombol lompat muncul
+  otomatis di device layar sentuh (sama seperti client Android).
+- Viewport `100dvh` + safe-area inset, `user-scalable=no`, fullscreen API.
+- PWA: install ke home screen, offline (untuk engine self-hosted + mirror
+  yang pernah dimuat), icon/status bar gelap.
+- Unduhan engine ter-cache permanen (`Cache-Control: immutable` + service
+  worker) — hanya sekali besar.
+- Tips in-game: turunkan *viewing range* (Settings → Graphics) bila berat.
+
+## Batasan yang perlu diketahui (jujur)
+
+- **iPhone butuh iOS 17+** (Safari harus mendukung SharedArrayBuffer).
+  Landing page mendeteksi dan menampilkan peringatan.
+- **Unduhan pertama besar** (±100–300 MB) — wajar untuk engine C++ penuh +
+  game pack.
+- **Mirror komunitas**: bila salah satu mirror down, ganti mirror di landing
+  page, atau pakai mode self-hosted. URL mirror bisa diganti langsung di
+  `src/lib/engine.ts`.
+- Build WASM 5.9 (Common Ground) adalah rilis **5.9** — game tetap lengkap
+  (VoxeLibre, dll.), tapi bukan Luanti terbaru (5.17). Mirror Dustlabs
+  lebih baru namun masih work-in-progress.
+- Performa di HP menengah: mainkan dengan *viewing range* kecil–sederhana;
+  WASM tidak secepat native, tapi playable.
+
+## Struktur project
+
+```
+app/
+  layout.tsx            metadata PWA, viewport mobile
+  page.tsx              landing page (bahasa Indonesia)
+  play/page.tsx         host full-screen engine
+  globals.css           semua gaya (landing + play)
+src/
+  lib/engine.ts         mirror, settings, deteksi self-host, device
+  hooks/usePWA.ts       SW + install prompt + fullscreen
+  components/EngineFrame.tsx   iframe + overlay + topbar auto-hide
+middleware.ts           header COOP/COEP per path
+scripts/download-engine.mjs    unduh engine → public/engine
+public/
+  engine/               (hasil download, git-ignored)
+  manifest.json, sw.js, icons/, logo.svg, assets/
+docs/                   riset & panduan teknis
+vercel.json             cache headers + build
 ```
 
-## Performance targets
+## Dokumentasi teknis
 
-| Goal                              | Status in this repo                              |
-| --------------------------------- | ------------------------------------------------ |
-| 60 FPS on mid-range mobile        | Adaptive quality loop + render-distance scaling  |
-| < 3 s initial load                | 93.9 kB First Load JS; WASM streamed/lazy        |
-| < 100 MB memory                   | Bounded tile budget + asset streaming hooks      |
-| < 50 ms input latency             | Single-frame input snapshot (no React re-render) |
-| Touch latency < 16 ms             | Pointer Events + `touch-action:none`             |
+- [docs/TECHNICAL_FEASIBILITY.md](docs/TECHNICAL_FEASIBILITY.md) — riset:
+  port WASM-nya ada, terbukti jalan, dan bagaimana kita mengintegrasikannya.
+- [docs/WASM_BUILD.md](docs/WASM_BUILD.md) — cara self-host: download engine
+  atau build sendiri via pipeline Emscripten.
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — detail Vercel, header, PWA,
+  troubleshooting.
 
-## Documentation
+## Lisensi & atribusi
 
-- [docs/TECHNICAL_FEASIBILITY.md](docs/TECHNICAL_FEASIBILITY.md) — research findings & the answers to your "questions to investigate".
-- [docs/WASM_BUILD.md](docs/WASM_BUILD.md) — how to compile/obtain the `.wasm` engine and wire it in.
-- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — decisions and reasoning.
-- [docs/PERFORMANCE.md](docs/PERFORMANCE.md) — all implemented optimisations.
-- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) — common issues & fixes.
-- [docs/MOBILE_TESTING.md](docs/MOBILE_TESTING.md) — device test matrix & manual QA steps.
-- [docs/OPTIMIZATION_REPORT.md](docs/OPTIMIZATION_REPORT.md) — feasibility summary + next steps.
-
-## License & attribution
-
-- The **frontend wrapper** (this repo) is released under the **MIT License** —
-  see [LICENSE](LICENSE).
-- The **Luanti engine** and any files derived from it are **LGPL-2.1-or-later**.
-  The WASM build pipeline (`paradust7/minetest-wasm`, `Kaesual/minetest-wasm`)
-  is **LGPLv2.1**. When you build and distribute the engine binary, you must
-  comply with LGPL (provide source/modification rights). Keep the wrapper and
-  the engine as separate, clearly-licensed artifacts. See [NOTICE](NOTICE).
-
-## Contributing / roadmap
-
-See [docs/ADVANCED.md](docs/ADVANCED.md) for the advanced topics (multiplayer,
-WebRTC/WebTransport proxy, asset pipeline, cross-browser, accessibility,
-analytics, security, state management, build optimisation) and the prioritised
-next steps.
+- Wrapper: **MIT** (lihat [LICENSE](LICENSE)).
+- Engine Luanti + build WASM: **LGPL-2.1-or-later** (lihat [NOTICE](NOTICE)).

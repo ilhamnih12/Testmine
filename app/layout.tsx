@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Luanti Mobile Web",
+  title: "Luanti Web — Main Luanti (Minetest) di Browser",
   description:
-    "Luanti (Minetest) web wrapper optimized for mobile: WASM client loader, virtual touch controls, and adaptive performance. Deploys to Vercel.",
-  applicationName: "Luanti Mobile Web",
+    "Luanti (Minetest) asli — engine voxel C++ yang dikompilasi ke WebAssembly — berjalan 100% di browser. Singleplayer, world tersimpan di browser, tanpa backend. Dioptimalkan untuk mobile.",
+  applicationName: "Luanti Web",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
@@ -16,6 +16,7 @@ export const metadata: Metadata = {
     icon: "/icons/icon-192.png",
     apple: "/icons/icon-192.png",
   },
+  robots: { index: true, follow: true },
 };
 
 export const viewport: Viewport = {
@@ -33,7 +34,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en">
+    <html lang="id">
       <body>{children}</body>
     </html>
   );
